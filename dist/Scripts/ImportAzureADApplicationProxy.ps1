@@ -7,11 +7,11 @@ Note that this script is intended to be run via the install script plugin from w
 
 Proper information should be available here
 
-https://github.com/PKISharp/win-acme/wiki/Install-Script
+https://simple-acme.com/reference/plugins/installation/script
 
 or more generally, here
 
-https://github.com/PKISharp/win-acme/wiki/Example-Scripts
+https://simple-acme.com/manual/advanced-use/examples/
 
 .PARAMETER PfxPath
 The absolute path to the pfx file that will be uploaded to Azure. Typically use '{CacheFile}'
@@ -27,7 +27,7 @@ Password for the azure account
 
 .EXAMPLE 
 
-ImportAzureApplicationGateway.ps1 <PfxPath> <CertPass>
+ImportAzureApplicationProxy.ps1 <PfxPath> <CertPass>
 
 .NOTES
 Wanted to use a service principal instead of an account for this, but since there is a bug with the cmdlets used, we can't. Instead a regular account must be specified.
@@ -56,32 +56,43 @@ if (!(Get-Command "Set-AzureAdApplicationProxyApplicationCustomDomainCertificate
 # Connect to Azure
 $Pass = ConvertTo-SecureString -String $Password -AsPlainText -Force
 $Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $Username, $Pass
-$null = Connect-AzureAD -Credential $Credential
+$null = Connect-MgGraph -Scopes FIXME -Credential $Credential
 
 
 # It's easier, apparently, to search for the service principals that are tagged with WindowsAzureActiveDirectoryOnPremApp,
 # then match them to the Get-AzureADApplication output by AppId.
 # Get-AzureADApplication doesn't have any way to filter only for ones using the application proxy, and 
 # Get-AzureADApplicationProxyApplication requires an ObjectId, there's no way to just list them all.
-$aadapServPrinc = Get-AzureADServicePrincipal -Top 100000 | where-object {$_.Tags -Contains "WindowsAzureActiveDirectoryOnPremApp"}
+$aadapServPrinc = Get-MgServicePrincipal -Property Displayname,Id,Appid,Tags -All | where-object {$_.Tags -Contains "WindowsAzureActiveDirectoryOnPremApp"}
 
 # Now we get a list of all Azure AD Applications
-$aadapps = Get-AzureADApplication -All $true
+$aadapps = Get-MgApplication -All | Sort-Object -Property AppId
 
 # The AppId between $aadapServPrinc and $aadapps is the same for each of the applications using Azure AD Application Proxy.
 # What we need to get is the ObjectId from $aadapps for each application that was in $aadapServPrinc
-$aadproxyapps = $aadapServPrinc | Foreach-Object { $aadapps -match $_.AppId}
-# Now $aadaproxyapps has just the Get-AzureADApplication objects for applications that use the Azure AD Application Proxy.
+$aadProxyApps = New-Object System.Collections.ArrayList
+#$aadproxyapps = $aadapServPrinc | Foreach-Object { $aadapps -match $_.AppId}
+foreach ($Principal in $aadapServPrinc){
+    write-host $Principal.AppId
+    foreach($App in $aadapps){
+       if($Principal.AppId -eq $App.AppId){
+            $aadProxyApps.add($App)
+        }
+    }
+}
+# Now $aadaproxyapps has just the Get-MgApplication objects for applications that use the Azure AD Application Proxy.
 
 "Found $($aadproxyapps.count) applications to update"
 
 # Get the matching objects from Get-AzureADApplicationProxyApplication and show the certificate being used
 #$aadproxyapps | Foreach-Object { 
-#    $proxyapp = Get-AzureADApplicationProxyApplication -ObjectId $_.ObjectId
-#    Write-Host "Checking $($proxyapp.ExternalUrl)"
-#    Write-Host "Existing certificate is: $($proxyapp.VerifiedCustomDomainCertificatesMetadata)"
+foreach($proxyApp in $aadproxyapps){
+    $proxyapp = Get-MgBetaApplication -ApplicationId $ProxyApp.Id -Select DisplayName,AppId,Id,OnPremisesPublishing
+    Write-Host "Checking $($proxyapp.OnPremisesPublishing.ExternalUrl)"
+    Write-Host "Existing certificate is:"
+    $($proxyapp.OnPremisesPublishing.VerifiedCustomDomainCertificatesMetadata)
 #    
-#}
+}
 
 # The documentation says "If you have one certificate that includes many of your applications, you only need to upload it with one application and it will also be assigned to the other relevant applications."
 # That does not seem to be the case. Updating the certificate for one application only updated that single application, the rest keep using the old certificate.
