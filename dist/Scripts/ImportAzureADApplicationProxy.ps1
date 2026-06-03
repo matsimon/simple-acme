@@ -19,19 +19,24 @@ The absolute path to the pfx file that will be uploaded to Azure. Typically use 
 .PARAMETER CertPass
 The password for the pfx file. Typically use '{CachePassword}'
 
-.PARAMETER Username
-Username of account to login with Connect-AzureAD. This account must have the "Application administrator" role to allow it to change the proxy certificate.
+.PARAMETER TenantId
+The Azure AD tenant ID (GUID).
 
-.PARAMETER Password
-Password for the azure account
+.PARAMETER ClientId
+The application (client) ID of the app registration used to authenticate. The app must have the
+'Application.ReadWrite.All' application permission granted and admin-consented in the tenant.
 
-.EXAMPLE 
+.PARAMETER ClientSecret
+The client secret of the app registration.
 
-ImportAzureApplicationProxy.ps1 <PfxPath> <CertPass>
+.EXAMPLE
+
+ImportAzureApplicationProxy.ps1 <PfxPath> <CertPass> <TenantId> <ClientId> <ClientSecret>
 
 .NOTES
-Wanted to use a service principal instead of an account for this, but since there is a bug with the cmdlets used, we can't. Instead a regular account must be specified.
-https://github.com/Azure/azure-docs-powershell-azuread/issues/200
+Authentication uses the OAuth 2.0 client credentials flow via Connect-MgGraph -ClientSecretCredential,
+which requires Microsoft.Graph module v2.0 or later:
+  Install-Module Microsoft.Graph -Scope AllUsers
 
 
 #>
@@ -39,24 +44,23 @@ https://github.com/Azure/azure-docs-powershell-azuread/issues/200
 param(
     [Parameter(Position=0,Mandatory=$false)][string]$PfxPath,
     [Parameter(Position=1,Mandatory=$true)][string]$CertPass,
-    [Parameter(Position=2,Mandatory=$true)][string]$Username,
-    [Parameter(Position=3,Mandatory=$true)][string]$Password
-    
-    
+    [Parameter(Position=2,Mandatory=$true)][string]$TenantId,
+    [Parameter(Position=3,Mandatory=$true)][string]$ClientId,
+    [Parameter(Position=4,Mandatory=$true)][string]$ClientSecret
 )
 
 # Convert the password for the certificate to a secure string
 $SecureCertPass = ConvertTo-SecureString -String $CertPass -AsPlainText -Force
 
 
-if (!(Get-Command "Set-AzureAdApplicationProxyApplicationCustomDomainCertificate" -erroraction SilentlyContinue)) {
-    Throw "Missing AzureAD module, install with 'Install-Module -name AzureAD -Scope AllUsers'"
-} 
+if (!(Get-Module -ListAvailable -Name Microsoft.Graph)) {
+    Throw "Missing Microsoft.Graph module, install with 'Install-Module -Name Microsoft.Graph -Scope AllUsers'"
+}
 
-# Connect to Azure
-$Pass = ConvertTo-SecureString -String $Password -AsPlainText -Force
-$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $Username, $Pass
-$null = Connect-MgGraph -Scopes FIXME -Credential $Credential
+# Connect to Microsoft Graph using client credentials (application secret)
+$SecureSecret = ConvertTo-SecureString -String $ClientSecret -AsPlainText -Force
+$ClientSecretCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ClientId, $SecureSecret
+$null = Connect-MgGraph -TenantId $TenantId -ClientSecretCredential $ClientSecretCredential -NoWelcome
 
 
 # It's easier, apparently, to search for the service principals that are tagged with WindowsAzureActiveDirectoryOnPremApp,
@@ -104,4 +108,4 @@ $aadproxyapps | Foreach-Object {
 }
 
 
-Disconnect-AzureAD
+Disconnect-MgGraph
