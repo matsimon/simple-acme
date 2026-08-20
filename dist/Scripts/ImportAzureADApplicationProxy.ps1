@@ -1,17 +1,11 @@
 <#
 .SYNOPSIS
-Imports a cert from win-acme (WACS) renewal into Azure AD Application Proxy for all applications that are using it. You likely want to use a wildcard certificate for this purpose.
+Imports a cert from simple-acme renewal into Azure AD Application Proxy for all applications that are using it. You likely want to use a wildcard certificate for this purpose.
 
 .DESCRIPTION
-Note that this script is intended to be run via the install script plugin from win-acme (WACS) via the batch script wrapper. As such, we use positional parameters to avoid issues with using a dash in the cmd line. 
+Note that this script is intended to be run via the install script plugin from simple-acme via the batch script wrapper. As such, we use positional parameters to avoid issues with using a dash in the cmd line. 
 
-Proper information should be available here
-
-https://simple-acme.com/reference/plugins/installation/script
-
-or more generally, here
-
-https://simple-acme.com/manual/advanced-use/examples/
+Uses Microsoft Graph API instead of deprecated AzureAD module.
 
 .PARAMETER PfxPath
 The absolute path to the pfx file that will be uploaded to Azure. Typically use '{CacheFile}'
@@ -38,11 +32,10 @@ Find this value in Entra ID > Enterprise Applications > <your app> > Application
 ImportAzureApplicationProxy.ps1 <PfxPath> <CertPass> <TenantId> <ClientId> <ClientSecret> <TargetAppId>
 
 .NOTES
-Authentication uses the OAuth 2.0 client credentials flow via Connect-MgGraph -ClientSecretCredential,
-which requires Microsoft.Graph module v2.0 or later:
-  Install-Module Microsoft.Graph -Scope AllUsers
+This uses the Microsoft Graph API instead of the deprecated Azure AD module which no longer works.
+Unfortunately, the graph API doesn't have good (or any really) documentation about managing certificates.
 
-
+This variant can update individual App registrations.
 #>
 
 #Requires -Version 7.4
